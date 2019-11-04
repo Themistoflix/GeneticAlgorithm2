@@ -6,5 +6,5 @@ if __name__ == '__main__':
     random.seed(1)
     lattice = FCC.FCCLattice(23, 23, 23, 2)
     particle = NP.Nanoparticle(lattice)
-    particle.convexShape([150, 150], ['Cu', 'Ag'], 13, 9, 21)
+    particle.convexShape([300, 300], ['Cu', 'Ag'], 15, 15, 15)
 

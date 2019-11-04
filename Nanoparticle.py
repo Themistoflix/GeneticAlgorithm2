@@ -38,6 +38,17 @@ class Nanoparticle:
 
             return cutPlaneAnchor, cutPlaneNormal
 
+        def drawCutPlaneFromRectangularPrism(minW, maxW, minL, maxL, minH, maxH, center):
+            cutPlaneNormal = np.array([0, 0, 0])
+            cutPlaneNormal[0] = (minW + random.random()*(maxW - minW))*(2*random.randrange(2) - 1)
+            cutPlaneNormal[1] = (minL + random.random() * (maxL - minL)) * (2*random.randrange(2) - 1)
+            cutPlaneNormal[2] = (minH + random.random() * (maxH - minH)) * (2*random.randrange(2) - 1)
+
+            cutPlaneAnchor = cutPlaneNormal + center
+            cutPlaneNormal = cutPlaneNormal/np.linalg.norm(cutPlaneNormal)
+
+            return cutPlaneAnchor, cutPlaneNormal
+
         finalNumberOfAtoms = sum(numberOfAtomsOfEachKind)
         self.rectangularPrism(w, l, h)
 
@@ -47,7 +58,8 @@ class Nanoparticle:
 
         while len(currentAtoms) > finalNumberOfAtoms and currentCuttingAttempt < MAX_CUTTING_ATTEMPTS:
             # create cut plane
-            cutPlaneAnchor, cutPlaneNormal = drawCutPlaneFromSphere(min(w, l, h)*0.9, min(w, l, h), self.boundingBox.getCenter())
+            #cutPlaneAnchor, cutPlaneNormal = drawCutPlaneFromSphere(min(w, l, h)*0.9, min(w, l, h), self.boundingBox.getCenter())
+            cutPlaneAnchor, cutPlaneNormal = drawCutPlaneFromRectangularPrism(w/2.*0.6, w/2, l/2.*0.6, l/2.,  h/2.*0.9, h/2., self.boundingBox.getCenter())
 
             # count atoms to be removed, if new Count >= final Number remove
             atomsToBeRemoved = set()
