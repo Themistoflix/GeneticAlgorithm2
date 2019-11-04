@@ -1,8 +1,10 @@
 import Nanoparticle as NP
 import FCCLattice as FCC
+import random
 
 if __name__ == '__main__':
-    lattice = FCC.FCCLattice(, 5, 5, 1)
-    particle = NP.Nanoparticle()
-    particle.convexShape(300, 'X', )
+    random.seed(1)
+    lattice = FCC.FCCLattice(23, 23, 23, 2)
+    particle = NP.Nanoparticle(lattice)
+    particle.convexShape([150, 150], ['Cu', 'Ag'], 13, 9, 21)
 

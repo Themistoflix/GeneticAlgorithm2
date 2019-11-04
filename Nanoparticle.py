@@ -22,7 +22,7 @@ class Nanoparticle:
                     curPosition = anchorPoint + np.array([x, y, z])
 
                     if self.lattice.isValidPosition(curPosition):
-                        index = self.lattice.getIndexFromPosition(curPosition)
+                        index = self.lattice.getIndexFromLatticePosition(curPosition)
 
                         self.indicesOnLattice.append(index)
                         self.atomicSymbols.append(symbol)
@@ -30,6 +30,14 @@ class Nanoparticle:
         self.findBoundingBox()
 
     def convexShape(self, numberOfAtomsOfEachKind, atomicSymbols, w, l, h):
+        def drawCutPlaneFromSphere(minRadius, maxRadius, center):
+            cutPlaneNormal = np.array([random.random() * 2 - 1, random.random() * 2 - 1, random.random() * 2 - 1])
+            cutPlaneNormal = cutPlaneNormal / np.linalg.norm(cutPlaneNormal)
+            cutPlaneAnchor = cutPlaneNormal * (minRadius + random.random() * (maxRadius - minRadius))
+            cutPlaneAnchor = cutPlaneAnchor + center
+
+            return cutPlaneAnchor, cutPlaneNormal
+
         finalNumberOfAtoms = sum(numberOfAtomsOfEachKind)
         self.rectangularPrism(w, l, h)
 
@@ -39,29 +47,19 @@ class Nanoparticle:
 
         while len(currentAtoms) > finalNumberOfAtoms and currentCuttingAttempt < MAX_CUTTING_ATTEMPTS:
             # create cut plane
-            def drawAnchorFromSphere(minRadius, maxRadius, center):
-                anchor = np.array([random.random(), random.random(), random.random()])
-                anchor = anchor / np.linalg.norm(anchor)
-                anchor = anchor * (minRadius + random.random() * (maxRadius - minRadius))
-                anchor = anchor + center
-
-                return anchor
-
-            def drawAnchorFromBox(percent):
-                return
-
-            cutPlaneAnchor = drawAnchorFromSphere(min(w, l, h) * 0.7, min(w, l, h), self.boundingBox.getCenter())
-            cutPlaneNormal = np.array([random.random() * 2 - 1, random.random() * 2 - 1, random.random() * 2 - 1])
+            cutPlaneAnchor, cutPlaneNormal = drawCutPlaneFromSphere(min(w, l, h)*0.9, min(w, l, h), self.boundingBox.getCenter())
 
             # count atoms to be removed, if new Count >= final Number remove
             atomsToBeRemoved = set()
             for atom in currentAtoms:
                 position = self.lattice.getCartesianPositionFromIndex(atom)
-                if np.dot((position - cutPlaneAnchor), cutPlaneNormal) < 0.0:
+                if np.dot((position - cutPlaneAnchor), cutPlaneNormal) > 0.0:
                     atomsToBeRemoved.add(atom)
 
-            if len(currentAtoms) - len(atomsToBeRemoved) >= finalNumberOfAtoms:
+            if len(atomsToBeRemoved) != 0.0 and len(currentAtoms) - len(atomsToBeRemoved) >= finalNumberOfAtoms:
                 currentAtoms = currentAtoms.difference(atomsToBeRemoved)
+                print(cutPlaneNormal, cutPlaneAnchor)
+                print(len(atomsToBeRemoved))
                 currentCuttingAttempt = 0
             else:
                 currentCuttingAttempt = currentCuttingAttempt + 1
@@ -73,7 +71,7 @@ class Nanoparticle:
             cutPlaneNormal[random.randrange(2)] = 1.0
 
             # shift till too many atoms would get removed
-            numberOfAtomsYetToBeRemoved = finalNumberOfAtoms - len(currentAtoms)
+            numberOfAtomsYetToBeRemoved = len(currentAtoms) - finalNumberOfAtoms
             atomsToBeRemoved = set()
             while len(atomsToBeRemoved) < numberOfAtomsYetToBeRemoved:
                 atomsToBeRemoved.clear()
@@ -81,37 +79,36 @@ class Nanoparticle:
                 for atom in currentAtoms:
                     position = self.lattice.getCartesianPositionFromIndex(atom)
                     if np.dot((position - cutPlaneAnchor), cutPlaneNormal) < 0.0:
-                        atomsToBeRemoved.add(position)
+                        atomsToBeRemoved.add(atom)
 
             # remove atoms till the final number is reached "from the ground up"
             positions = list()
             for atom in atomsToBeRemoved:
                 positions.append(self.lattice.getCartesianPositionFromIndex(atom))
 
+            # TODO implement sorting prioritzing the different directions in random order
             def directionSort(position):
-                order = random.shuffle(range(2))
-                return position[order[0]] + position[order[1]] * 10 + position[order[2]] * 100
+                return position[0]
 
-            positions = positions.sort(key=directionSort)
+            positions.sort(key=directionSort)
             positions = positions[:numberOfAtomsYetToBeRemoved]
 
             atomsToBeRemoved.clear()
             for position in positions:
-                atomsToBeRemoved.add(self.lattice.getIndexFromPosition(position))
+                atomsToBeRemoved.add(self.lattice.getIndexFromCartesianPosition(position))
 
             currentAtoms = currentAtoms.difference(atomsToBeRemoved)
 
         # update the list of atoms of the particle
         self.indicesOnLattice.clear()
         for atom in currentAtoms:
-            self.indicesOnLattice.append((atom))
+            self.indicesOnLattice.append(atom)
 
         self.findBoundingBox()
 
         # redistribute the different elements randomly
         self.atomicSymbols.clear()
         for index, symbol in enumerate(atomicSymbols):
-            print(symbol)
             for i in range(numberOfAtomsOfEachKind[index]):
                 self.atomicSymbols.append(symbol)
         random.shuffle(self.atomicSymbols)
@@ -134,7 +131,14 @@ class Nanoparticle:
 
         self.boundingBox = BoundingBox.BoundingBox(w, l, h, minCoordinates)
 
-    def getPositionsOnLattice(self):
+    def getLatticePositions(self):
+        positions = list()
+        for atomIndex in self.indicesOnLattice:
+            positions.append(self.lattice.getLatticPositionFromIndex(atomIndex))
+
+        return positions
+
+    def getCartesianPositions(self):
         positions = list()
         for atomIndex in self.indicesOnLattice:
             positions.append(self.lattice.getCartesianPositionFromIndex(atomIndex))
@@ -142,7 +146,7 @@ class Nanoparticle:
         return positions
 
     def getAtoms(self, centered=True):
-        atomPositions = self.getPositionsOnLattice()
+        atomPositions = self.getCartesianPositions()
         if centered:
             centerOfMass = np.array([0, 0, 0])
             for position in atomPositions:
