@@ -23,7 +23,7 @@ class FCCLattice:
 
         return True
 
-    def isValidPosition(self, position):
+    def isValidLatticePosition(self, position):
         # check boundaries
         if position[0] < 0 or position[1] < 0 or position[2] < 0:
             return False
@@ -129,7 +129,7 @@ class FCCLattice:
         anchorPointY = int((self.length - l - 1) / 2)
         anchorPointZ = int((self.height - h - 1) / 2)
 
-        if not self.isValidPosition(np.array([anchorPointX, anchorPointY, anchorPointZ])):
+        if not self.isValidLatticePosition(np.array([anchorPointX, anchorPointY, anchorPointZ])):
             anchorPointZ = anchorPointZ + 1
 
         return np.array([anchorPointX, anchorPointY, anchorPointZ])
