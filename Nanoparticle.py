@@ -4,7 +4,6 @@ import copy
 from collections import namedtuple
 from ase import Atoms
 
-import FCCLattice
 import BoundingBox
 
 
@@ -39,56 +38,36 @@ class Nanoparticle:
         self.findBoundingBox()
         self.constructNeighborList()
 
-    def splitAtomsAlongPlane(self, cutPlaneAnchor, cutPlaneNormal, atoms=None):
+    def splitAtomsAlongPlane(self, cuttingPlane, atoms=None):
         if atoms is None:
             atoms = self.atoms
 
-        indicesInPositiveSubspace = set()
-        indicesInNegativeSubspace = set()
+        atomsInPositiveSubspace = set()
+        atomsInNegativeSubspace = set()
 
         for atom in atoms:
             position = self.lattice.getCartesianPositionFromIndex(atom.latticeIndex)
-            if np.dot((position - cutPlaneAnchor), cutPlaneNormal) >= 0.0:
-                indicesInPositiveSubspace.add(atom)
+            if np.dot((position - cuttingPlane.anchor), cuttingPlane.normal) >= 0.0:
+                atomsInPositiveSubspace.add(atom)
             else:
-                indicesInNegativeSubspace.add(atom)
-        return indicesInPositiveSubspace, indicesInNegativeSubspace
+                atomsInNegativeSubspace.add(atom)
+        return atomsInPositiveSubspace, atomsInNegativeSubspace
 
-    def convexShape(self, numberOfAtomsOfEachKind, atomicSymbols, w, l, h):
-        def drawCutPlaneFromSphere(minRadius, maxRadius, center):
-            cutPlaneNormal = np.array([random.random() * 2 - 1, random.random() * 2 - 1, random.random() * 2 - 1])
-            cutPlaneNormal = cutPlaneNormal / np.linalg.norm(cutPlaneNormal)
-            cutPlaneAnchor = cutPlaneNormal * (minRadius + random.random() * (maxRadius - minRadius))
-            cutPlaneAnchor = cutPlaneAnchor + center
-
-            return cutPlaneAnchor, cutPlaneNormal
-
-        def drawCutPlaneFromRectangularPrism(minW, maxW, minL, maxL, minH, maxH, center):
-            cutPlaneNormal = np.array([0, 0, 0])
-            cutPlaneNormal[0] = (minW + random.random()*(maxW - minW))*(2*random.randrange(2) - 1)
-            cutPlaneNormal[1] = (minL + random.random() * (maxL - minL)) * (2*random.randrange(2) - 1)
-            cutPlaneNormal[2] = (minH + random.random() * (maxH - minH)) * (2*random.randrange(2) - 1)
-
-            cutPlaneAnchor = cutPlaneNormal + center
-            cutPlaneNormal = cutPlaneNormal/np.linalg.norm(cutPlaneNormal)
-
-            return cutPlaneAnchor, cutPlaneNormal
+    def convexShape(self, numberOfAtomsOfEachKind, atomicSymbols, w, l, h, cuttingPlaneGenerator):
+        self.rectangularPrism(w, l, h)
+        currentAtoms = set(self.atoms)
 
         finalNumberOfAtoms = sum(numberOfAtomsOfEachKind)
-        self.rectangularPrism(w, l, h)
-
-        currentAtoms = set(self.atoms)
         MAX_CUTTING_ATTEMPTS = 50
         currentCuttingAttempt = 0
+        cuttingPlaneGenerator.setCenter(self.boundingBox.getCenter())
 
         while len(currentAtoms) > finalNumberOfAtoms and currentCuttingAttempt < MAX_CUTTING_ATTEMPTS:
             # create cut plane
-            #cutPlaneAnchor, cutPlaneNormal = drawCutPlaneFromSphere(min(w, l, h)*0.9, min(w, l, h), self.boundingBox.getCenter())
-            cutPlaneAnchor, cutPlaneNormal = drawCutPlaneFromRectangularPrism(w/2.*0.9, w/2, l/2.*0.9, l/2.,  h/2.*0.9, h/2., self.boundingBox.getCenter())
+            cuttingPlane = cuttingPlaneGenerator.generateNewCuttingPlane()
 
             # count atoms to be removed, if new Count >= final Number remove
-            atomsToBeRemoved, atomsToBeKept = self.splitAtomsAlongPlane(cutPlaneAnchor, cutPlaneNormal, currentAtoms)
-
+            atomsToBeRemoved, atomsToBeKept = self.splitAtomsAlongPlane(cuttingPlane, currentAtoms)
             if len(atomsToBeRemoved) != 0.0 and len(currentAtoms) - len(atomsToBeRemoved) >= finalNumberOfAtoms:
                 currentAtoms = currentAtoms.difference(atomsToBeRemoved)
                 currentCuttingAttempt = 0
@@ -97,16 +76,14 @@ class Nanoparticle:
 
         if currentCuttingAttempt == MAX_CUTTING_ATTEMPTS:
             # place cutting plane parallel to one of the axes and at the anchor point
-            cutPlaneAnchor = self.boundingBox.position
-            cutPlaneNormal = np.array([0, 0, 0])
-            cutPlaneNormal[random.randrange(2)] = 1.0
+            cuttingPlane = cuttingPlaneGenerator.createAxisParallelCuttingPlane(self.boundingBox.position)
 
             # shift till too many atoms would get removed
             numberOfAtomsYetToBeRemoved = len(currentAtoms) - finalNumberOfAtoms
             atomsToBeRemoved = set()
             while len(atomsToBeRemoved) < numberOfAtomsYetToBeRemoved:
-                cutPlaneAnchor = cutPlaneAnchor + cutPlaneNormal * self.lattice.latticeConstant
-                atomsToBeKept, atomsToBeRemoved = self.splitAtomsAlongPlane(cutPlaneAnchor, cutPlaneNormal, currentAtoms)
+                cuttingPlane = cuttingPlane._replace(anchor=cuttingPlane.anchor + cuttingPlane.normal * self.lattice.latticeConstant)
+                atomsToBeKept, atomsToBeRemoved = self.splitAtomsAlongPlane(cuttingPlane, currentAtoms)
 
             # remove atoms till the final number is reached "from the ground up"
 
