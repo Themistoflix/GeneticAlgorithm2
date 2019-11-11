@@ -6,6 +6,8 @@ class FCCLattice:
     # width  is associated with the x component
     # length is associated with the y component
     # height is associated with the z component
+    MAX_NEIGHBORS = 12
+
     def __init__(self, width, length, height, latticeConstant):
         assert width % 2 == 1 and length % 2 == 1 and height % 2 == 1, "box dimensions need to be odd!"
         self.width = width
@@ -124,7 +126,7 @@ class FCCLattice:
     def getCartesianPositionFromIndex(self, index):
         return self.getLatticePositionFromIndex(index) * self.latticeConstant
 
-    def getAnchorOfCenteredBox(self, w, h, l):
+    def getAnchorIndexOfCenteredBox(self, w, h, l):
         anchorPointX = int((self.width - w - 1) / 2)
         anchorPointY = int((self.length - l - 1) / 2)
         anchorPointZ = int((self.height - h - 1) / 2)
@@ -133,3 +135,20 @@ class FCCLattice:
             anchorPointZ = anchorPointZ + 1
 
         return np.array([anchorPointX, anchorPointY, anchorPointZ])
+
+    def getNearestNeighbors(self, index):
+        position = self.getLatticePositionFromIndex(index)
+
+        neighbors = set()
+        for xOffset in [-1, 0, 1]:
+            for yOffset in [-1, 0, 1]:
+                for zOffset in [-1, 0, 1]:
+                    if xOffset is yOffset is zOffset is 0:
+                        continue
+                    offset = np.array([xOffset, yOffset, zOffset])
+
+                    if self.isValidLatticePosition(position + offset):
+                        neighborIndex = self.getIndexFromLatticePosition(position + offset)
+                        neighbors.add(neighborIndex)
+
+        return neighbors

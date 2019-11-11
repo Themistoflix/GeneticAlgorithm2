@@ -1,4 +1,3 @@
-import random
 import Nanoparticle as NP
 
 
@@ -7,15 +6,24 @@ class CuttingPlaneOperator:
         self.cuttingPlaneGenerator = cuttingPlaneGenerator
 
     def cutAndReassembleNanoparticles(self, particle1, particle2):
+        self.cuttingPlaneGenerator.setCenter(particle1.boundingBox.getCenter())
         cuttingPlane = self.cuttingPlaneGenerator.generateNewCuttingPlane()
         commonLattice = particle1.lattice
 
-        atomsInPositiveSubspace, _ = particle1.splitAtomsAlongPlane(cuttingPlane)
-        _, atomsInNegativeSubspace = particle2.splitAtomsAlongPlane(cuttingPlane)
+        atomIndicesInPositiveSubspace, _ = particle1.splitAtomIndicesAlongPlane(cuttingPlane)
+        _, atomIndicesInNegativeSubspace = particle2.splitAtomIndicesAlongPlane(cuttingPlane)
 
-        newAtomsData = list(atomsInPositiveSubspace) + list(atomsInNegativeSubspace)
+        newAtomsData = {**particle1.getAtoms(atomIndicesInPositiveSubspace), **particle2.getAtoms(atomIndicesInNegativeSubspace)}
         newParticle = NP.Nanoparticle(commonLattice)
         newParticle.fromParticleData(newAtomsData)
 
-        return newParticle
+        oldStoichiometry = particle1.getStoichiometry()
+        newStoichiometry = newParticle.getStoichiometry()
+
+        if newStoichiometry == oldStoichiometry:
+            return newParticle
+        else:
+            newParticle.enforceStoichiometry(oldStoichiometry)
+            return newParticle
+
 
