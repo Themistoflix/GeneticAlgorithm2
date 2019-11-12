@@ -31,10 +31,60 @@ class Nanoparticle:
         self.findBoundingBox()
         self.constructNeighborList()
 
+    def kozlovSphere(self, height, symbols, ratio):
+        boundingBoxAnchor = self.lattice.getAnchorIndexOfCenteredBox(2*height, 2*height, 2*height)
+        lowerTipPosition = boundingBoxAnchor + np.array([height, height, 0])
+
+        if not self.lattice.isValidLatticePosition(lowerTipPosition):
+            lowerTipPosition[2] = lowerTipPosition[2] + 1
+
+        layerBasisVector1 = np.array([1, 1, 0])
+        layerBasisVector2 = np.array([-1, 1, 0])
+        for zPosition in range(height):
+            layerWidth = zPosition + 1
+            lowerLayerOffset = np.array([0, -zPosition, zPosition])
+            upperLayerOffset = np.array([0, -zPosition, 2*height - 2 - zPosition])
+
+            lowerLayerStartPosition = lowerTipPosition + lowerLayerOffset
+            upperLayerStartPosition = lowerTipPosition + upperLayerOffset
+            for width in range(layerWidth):
+                for length in range(layerWidth):
+                    currentPositionLowerLayer = lowerLayerStartPosition + width*layerBasisVector1 + length*layerBasisVector2
+                    currentPositionUpperLayer = upperLayerStartPosition + width*layerBasisVector1 + length*layerBasisVector2
+
+                    lowerLayerIndex = self.lattice.getIndexFromLatticePosition(currentPositionLowerLayer)
+                    upperLayerIndex = self.lattice.getIndexFromLatticePosition(currentPositionUpperLayer)
+
+                    self.atoms[lowerLayerIndex] = 'X'
+                    self.atoms[upperLayerIndex] = 'X'
+
+        self.constructNeighborList()
+        corners = self.getAtomIndicesFromCoordinationNumbers([4])
+        print(corners)
+        self.removeAtoms(corners)
+        self.findBoundingBox()
+
+        totalNumberOfAtoms = len(self.atoms)
+        numberOfAtomsWithSymbol1 = int(totalNumberOfAtoms*ratio)
+        numberOfAtomsWithSymbol2 = totalNumberOfAtoms - numberOfAtomsWithSymbol1
+
+        self.randomChemicalOrdering(symbols, [numberOfAtomsWithSymbol1, numberOfAtomsWithSymbol2])
+
     def fromParticleData(self, atoms):
         self.atoms = atoms
         self.findBoundingBox()
         self.constructNeighborList()
+
+    def randomChemicalOrdering(self, symbols, atomsOfEachKind):
+        newOrdering = list()
+        for index, symbol in enumerate(symbols):
+            for i in range(atomsOfEachKind[index]):
+                newOrdering.append(symbol)
+
+        np.random.shuffle(newOrdering)
+
+        for symbolIndex, atomIndex in enumerate(self.atoms):
+            self.atoms[atomIndex] = newOrdering[symbolIndex]
 
     def splitAtomIndicesAlongPlane(self, cuttingPlane, atomIndices=None):
         if atomIndices is None:
@@ -97,16 +147,10 @@ class Nanoparticle:
             indicesOfCurrentAtoms = indicesOfCurrentAtoms.difference(atomsToBeRemoved)
 
         # redistribute the different elements randomly
-        newAtomicSymbols = list()
-        for index, symbol in enumerate(atomicSymbols):
-            for i in range(numberOfAtomsOfEachKind[index]):
-                newAtomicSymbols.append(symbol)
-
-        random.shuffle(newAtomicSymbols)
-
         self.atoms.clear()
-        for symbolIndex, latticeIndex in enumerate(indicesOfCurrentAtoms):
-            self.atoms[latticeIndex] = newAtomicSymbols[symbolIndex]
+        for latticeIndex in indicesOfCurrentAtoms:
+            self.atoms[latticeIndex] = 'X'
+        self.randomChemicalOrdering(atomicSymbols, numberOfAtomsOfEachKind)
 
         self.findBoundingBox()
         self.constructNeighborList()
@@ -212,7 +256,7 @@ class Nanoparticle:
         atoms = self.getASEAtoms()
         atoms.set_calculator(EMT())
         dyn = BFGS(atoms)
-        dyn.run(fmax=0.05, steps=10)
+        dyn.run(fmax=0.05, steps=100)
 
         return atoms.get_potential_energy()/len(self.atoms)
 
