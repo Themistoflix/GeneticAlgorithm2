@@ -1,12 +1,10 @@
 import numpy as np
-import random
-import copy
 
 from ase import Atoms
 from ase.optimize import BFGS
 from ase.calculators.emt import EMT
 
-import BoundingBox
+from Code import BoundingBox
 
 
 class Nanoparticle:
@@ -60,7 +58,7 @@ class Nanoparticle:
 
         self.constructNeighborList()
         corners = self.getAtomIndicesFromCoordinationNumbers([4])
-        print(corners)
+
         self.removeAtoms(corners)
         self.findBoundingBox()
 
@@ -70,10 +68,13 @@ class Nanoparticle:
 
         self.randomChemicalOrdering(symbols, [numberOfAtomsWithSymbol1, numberOfAtomsWithSymbol2])
 
-    def fromParticleData(self, atoms):
+    def fromParticleData(self, atoms, neighborList=None):
         self.atoms = atoms
         self.findBoundingBox()
-        self.constructNeighborList()
+        if neighborList is None:
+            self.constructNeighborList()
+        else:
+            self.neighborList = neighborList
 
     def randomChemicalOrdering(self, symbols, atomsOfEachKind):
         newOrdering = list()
@@ -203,12 +204,19 @@ class Nanoparticle:
         innerCoordinationNumbers = [12]
         return self.getAtomIndicesFromCoordinationNumbers(innerCoordinationNumbers, symbol)
 
-    def getNumberOfHeteroatomicBonds(self, symbol1, symbol2):
+    def getNumberOfHeteroatomicBonds(self, symbol1=None, symbol2=None):
         numberOfHeteroatomicBonds = 0
+        if symbol1 is None or symbol2 is None:
+            symbol1 = list(self.getStoichiometry().keys())[0]
+            if len(list(self.getStoichiometry().keys())) > 1:
+                symbol2 = list(self.getStoichiometry().keys())[1]
+            else:
+                return 0
+
         for latticeIndex in self.atoms:
             neighborList = self.neighborList[latticeIndex]
+            symbolA = self.atoms[latticeIndex]
             for neighbor in neighborList:
-                symbolA = self.atoms[latticeIndex]
                 symbolB = self.atoms[neighbor]
 
                 if symbol1 == symbolA and symbol2 == symbolB or symbol1 == symbolB and symbol2 == symbolA:
@@ -235,6 +243,9 @@ class Nanoparticle:
 
             return atoms.copy()
 
+    def getNeighborList(self):
+        return self.neighborList.copy()
+
     def getASEAtoms(self, centered=True):
         atomPositions = list()
         atomicSymbols = list()
@@ -259,6 +270,33 @@ class Nanoparticle:
         dyn.run(fmax=0.05, steps=100)
 
         return atoms.get_potential_energy()/len(self.atoms)
+
+    def getKozlovParameters(self, symbol):
+        # coordination numbers from Kozlov et al. 2015
+        coordinationNumberCornerAtoms = [1, 2, 3, 4, 5, 6]
+        coordinationNumberEdgeAtoms = [7]
+        coordinationNumberTerraceAtoms = [9]
+
+        cornerAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberCornerAtoms)
+        edgeAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberEdgeAtoms)
+        terraceAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberTerraceAtoms)
+
+        numCornerAtoms = len(list(filter(lambda x: self.atoms[x] == symbol, cornerAtoms)))
+        numEdgeAtoms = len(list(filter(lambda x: self.atoms[x] == symbol, edgeAtoms)))
+        numTerraceAtoms = len(list(filter(lambda x: self.atoms[x] == symbol, terraceAtoms)))
+        numHeteroatomicBonds = self.getNumberOfHeteroatomicBonds()
+
+        return np.array([numHeteroatomicBonds, numCornerAtoms, numEdgeAtoms, numTerraceAtoms])
+
+    def printKozlovParameters(self, symbol):
+        kozlovParameters = self.getKozlovParameters(symbol)
+        print("number of heteroatomic bonds: {0}".format(kozlovParameters[0]))
+        print("number of {0} corner atoms: {1}".format(symbol, kozlovParameters[1]))
+        print("number of {0} edge atoms: {1}".format(symbol, kozlovParameters[2]))
+        print("number of {0} terrace atoms: {1}".format(symbol, kozlovParameters[3]))
+
+    def getKozlovEnergy(self, descriptors, symbol):
+        return np.dot(descriptors, self.getKozlovParameters(symbol))
 
     def getStoichiometry(self):
         stoichiometry = dict()

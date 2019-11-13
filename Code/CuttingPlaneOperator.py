@@ -1,4 +1,4 @@
-import Nanoparticle as NP
+from Code import Nanoparticle as NP
 
 
 class CuttingPlaneOperator:
