@@ -5,7 +5,7 @@ import numpy as np
 
 if __name__ == '__main__':
     np.random.seed(2348)
-    lattice = FCC.FCCLattice(9, 9, 9, 2)
+    lattice = FCC.FCCLattice(21, 21, 21, 2)
 
     startParticle = NP.Nanoparticle(lattice)
     ratio = 0.5
@@ -54,6 +54,6 @@ if __name__ == '__main__':
             oldEnergy = newEnergy
             startParticle = newParticle
 
-print(energies)
+    print(energies)
 
 

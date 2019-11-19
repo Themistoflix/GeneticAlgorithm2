@@ -1,17 +1,19 @@
 import numpy as np
+import copy
 
 from ase import Atoms
 from ase.optimize import BFGS
 from asap3 import EMT
 
 from Code import BoundingBox
+from Code import IndexedAtoms
 
 
 class Nanoparticle:
 
     def __init__(self, lattice):
         self.lattice = lattice
-        self.atoms = dict()
+        self.atoms = IndexedAtoms.IndexedAtoms()
         self.boundingBox = BoundingBox.BoundingBox(0, 0, 0, np.array([0, 0, 0]))
         self.neighborList = dict()
 
@@ -24,7 +26,7 @@ class Nanoparticle:
 
                     if self.lattice.isValidLatticePosition(curPosition):
                         latticeIndex = self.lattice.getIndexFromLatticePosition(curPosition)
-                        self.atoms[latticeIndex] = symbol
+                        self.atoms.addAtoms([(latticeIndex, symbol)])
 
         self.findBoundingBox()
         self.constructNeighborList()
@@ -53,8 +55,7 @@ class Nanoparticle:
                     lowerLayerIndex = self.lattice.getIndexFromLatticePosition(currentPositionLowerLayer)
                     upperLayerIndex = self.lattice.getIndexFromLatticePosition(currentPositionUpperLayer)
 
-                    self.atoms[lowerLayerIndex] = 'X'
-                    self.atoms[upperLayerIndex] = 'X'
+                    self.atoms.addAtoms([(lowerLayerIndex, 'X'), (upperLayerIndex, 'X')])
 
         self.constructNeighborList()
         corners = self.getAtomIndicesFromCoordinationNumbers([4])
@@ -62,34 +63,29 @@ class Nanoparticle:
         self.removeAtoms(corners)
         self.findBoundingBox()
 
-        totalNumberOfAtoms = len(self.atoms)
+        totalNumberOfAtoms = self.atoms.getCount()
         numberOfAtomsWithSymbol1 = int(totalNumberOfAtoms*ratio)
         numberOfAtomsWithSymbol2 = totalNumberOfAtoms - numberOfAtomsWithSymbol1
 
         self.randomChemicalOrdering(symbols, [numberOfAtomsWithSymbol1, numberOfAtomsWithSymbol2])
 
-    def fromParticleData(self, atoms, neighborList=None):
+    def fromParticleData(self, atoms, neighborList=None, boundingBox=None):
         self.atoms = atoms
-        self.findBoundingBox()
+        if boundingBox is None:
+            self.findBoundingBox()
+        else:
+            self.boundingBox = boundingBox
         if neighborList is None:
             self.constructNeighborList()
         else:
             self.neighborList = neighborList
 
     def randomChemicalOrdering(self, symbols, atomsOfEachKind):
-        newOrdering = list()
-        for index, symbol in enumerate(symbols):
-            for i in range(atomsOfEachKind[index]):
-                newOrdering.append(symbol)
-
-        np.random.shuffle(newOrdering)
-
-        for symbolIndex, atomIndex in enumerate(self.atoms):
-            self.atoms[atomIndex] = newOrdering[symbolIndex]
+        self.atoms.randomChemicalOrdering(symbols, atomsOfEachKind)
 
     def splitAtomIndicesAlongPlane(self, cuttingPlane, atomIndices=None):
         if atomIndices is None:
-            atomIndices = self.atoms
+            atomIndices = self.atoms.getIndices()
 
         atomsInPositiveSubspace = set()
         atomsInNegativeSubspace = set()
@@ -104,7 +100,7 @@ class Nanoparticle:
 
     def convexShape(self, numberOfAtomsOfEachKind, atomicSymbols, w, l, h, cuttingPlaneGenerator):
         self.rectangularPrism(w, l, h)
-        indicesOfCurrentAtoms = set(self.atoms.keys())
+        indicesOfCurrentAtoms = set(self.atoms.getIndices())
 
         finalNumberOfAtoms = sum(numberOfAtomsOfEachKind)
         MAX_CUTTING_ATTEMPTS = 50
@@ -149,9 +145,8 @@ class Nanoparticle:
 
         # redistribute the different elements randomly
         self.atoms.clear()
-        for latticeIndex in indicesOfCurrentAtoms:
-            self.atoms[latticeIndex] = 'X'
-        self.randomChemicalOrdering(atomicSymbols, numberOfAtomsOfEachKind)
+        self.atoms.addAtoms(zip(indicesOfCurrentAtoms, ['X']*len(indicesOfCurrentAtoms)))
+        self.atoms.randomChemicalOrdering(atomicSymbols, numberOfAtomsOfEachKind)
 
         self.findBoundingBox()
         self.constructNeighborList()
@@ -160,7 +155,7 @@ class Nanoparticle:
         minCoordinates = np.array([1e10, 1e10, 1e10])
         maxCoordinates = np.array([-1e10, -1e10, -1e10])
 
-        for latticeIndex in self.atoms:
+        for latticeIndex in self.atoms.getIndices():
             curPosition = self.lattice.getCartesianPositionFromIndex(latticeIndex)
             for coordinate in range(3):
                 if curPosition[coordinate] < minCoordinates[coordinate]:
@@ -175,11 +170,11 @@ class Nanoparticle:
         self.boundingBox = BoundingBox.BoundingBox(w, l, h, minCoordinates)
 
     def constructNeighborList(self):
-        for latticeIndex in self.atoms:
+        for latticeIndex in self.atoms.getIndices():
             nearestLatticeNeighbors = self.lattice.getNearestNeighbors(latticeIndex)
             nearestNeighbors = set()
             for neighbor in nearestLatticeNeighbors:
-                if neighbor in self.atoms:
+                if neighbor in self.atoms.getIndices():
                     nearestNeighbors.add(neighbor)
 
             self.neighborList[latticeIndex] = nearestNeighbors
@@ -204,54 +199,57 @@ class Nanoparticle:
         innerCoordinationNumbers = [12]
         return self.getAtomIndicesFromCoordinationNumbers(innerCoordinationNumbers, symbol)
 
-    def getNumberOfHeteroatomicBonds(self, symbol1=None, symbol2=None):
+    def getNumberOfHeteroatomicBonds(self):
         numberOfHeteroatomicBonds = 0
-        if symbol1 is None or symbol2 is None:
-            symbol1 = list(self.getStoichiometry().keys())[0]
-            if len(list(self.getStoichiometry().keys())) > 1:
-                symbol2 = list(self.getStoichiometry().keys())[1]
-            else:
-                return 0
 
-        for latticeIndex in self.atoms:
-            neighborList = self.neighborList[latticeIndex]
-            symbolA = self.atoms[latticeIndex]
+        if len(self.atoms.getSymbols()) == 2:
+            symbol = self.atoms.getSymbols()[0]
+        else:
+            return 0
+
+        for latticeIndexWithSymbol in self.atoms.getIndicesBySymbol(symbol):
+            neighborList = self.neighborList[latticeIndexWithSymbol]
             for neighbor in neighborList:
-                symbolB = self.atoms[neighbor]
+                symbolOfNeighbor = self.atoms.getSymbol(neighbor)
 
-                if symbol1 == symbolA and symbol2 == symbolB or symbol1 == symbolB and symbol2 == symbolA:
+                if symbol != symbolOfNeighbor:
                     numberOfHeteroatomicBonds = numberOfHeteroatomicBonds + 1
 
-        return numberOfHeteroatomicBonds/2
+        return numberOfHeteroatomicBonds
 
     def getAtomIndicesFromCoordinationNumbers(self, coordinationNumbers, symbol=None):
         if symbol is None:
-            return list(filter(lambda x: self.getCoordinationNumber(x) in coordinationNumbers, self.atoms))
+            return list(filter(lambda x: self.getCoordinationNumber(x) in coordinationNumbers, self.atoms.getIndices()))
         else:
-            return list(filter(lambda x: self.getCoordinationNumber(x) in coordinationNumbers and self.atoms[x] == symbol, self.atoms))
+            return list(filter(lambda x: self.getCoordinationNumber(x) in coordinationNumbers and self.atoms.getSymbol(x) == symbol, self.atoms.getIndices()))
 
     def getCoordinationNumber(self, latticeIndex):
         return len(self.neighborList[latticeIndex])
 
     def getAtoms(self, atomIndices=None):
         if atomIndices is None:
-            return dict(self.atoms)
+            return copy.copy(self.atoms)
         else:
-            atoms = dict()
-            for index in atomIndices:
-                atoms[index] = self.atoms[index]
+            # TODO: not safe yet
+            atoms = IndexedAtoms.IndexedAtoms()
+            symbols = [self.atoms.getSymbol(index) for index in atomIndices]
 
-            return atoms.copy()
+            atoms.addAtoms(zip(atomIndices, symbols))
+
+            return copy.copy(atoms)
 
     def getNeighborList(self):
         return self.neighborList.copy()
 
+    def getBoundingBox(self):
+        return copy.copy(self.boundingBox)
+
     def getASEAtoms(self, centered=True):
         atomPositions = list()
         atomicSymbols = list()
-        for latticeIndex, atomicSymbol in self.atoms.items():
+        for latticeIndex in self.atoms.getIndices():
             atomPositions.append(self.lattice.getCartesianPositionFromIndex(latticeIndex))
-            atomicSymbols.append(atomicSymbol)
+            atomicSymbols.append(self.atoms.getSymbol(latticeIndex))
 
         if centered:
             centerOfMass = np.array([0, 0, 0])
@@ -270,7 +268,7 @@ class Nanoparticle:
         dyn = BFGS(atoms)
         dyn.run(fmax=0.05, steps=10)
 
-        return atoms.get_potential_energy()/len(self.atoms)
+        return atoms.get_potential_energy()/self.atoms.getCount()
 
     def getKozlovParameters(self, symbol):
         # coordination numbers from Kozlov et al. 2015
@@ -278,13 +276,13 @@ class Nanoparticle:
         coordinationNumberEdgeAtoms = [7]
         coordinationNumberTerraceAtoms = [9]
 
-        cornerAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberCornerAtoms)
-        edgeAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberEdgeAtoms)
-        terraceAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberTerraceAtoms)
+        cornerAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberCornerAtoms, symbol)
+        edgeAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberEdgeAtoms, symbol)
+        terraceAtoms = self.getAtomIndicesFromCoordinationNumbers(coordinationNumberTerraceAtoms, symbol)
 
-        numCornerAtoms = len(list(filter(lambda x: self.atoms[x] == symbol, cornerAtoms)))
-        numEdgeAtoms = len(list(filter(lambda x: self.atoms[x] == symbol, edgeAtoms)))
-        numTerraceAtoms = len(list(filter(lambda x: self.atoms[x] == symbol, terraceAtoms)))
+        numCornerAtoms = len(cornerAtoms)
+        numEdgeAtoms = len(edgeAtoms)
+        numTerraceAtoms = len(terraceAtoms)
         numHeteroatomicBonds = self.getNumberOfHeteroatomicBonds()
 
         return np.array([numHeteroatomicBonds, numCornerAtoms, numEdgeAtoms, numTerraceAtoms])
@@ -300,17 +298,10 @@ class Nanoparticle:
         return np.dot(descriptors, self.getKozlovParameters(symbol))
 
     def getStoichiometry(self):
-        stoichiometry = dict()
-        for symbol in self.atoms.values():
-            if symbol in stoichiometry.keys():
-                stoichiometry[symbol] = stoichiometry[symbol] + 1
-            else:
-                stoichiometry[symbol] = 1
-
-        return stoichiometry
+        return self.atoms.getStoichiometry()
 
     def enforceStoichiometry(self, stoichiometry):
-        atomNumberDifference = len(self.atoms) - sum(stoichiometry.values())
+        atomNumberDifference = self.atoms.getCount() - sum(stoichiometry.values())
 
         if atomNumberDifference > 0:
             self.removeUndercoordinatedAtoms(atomNumberDifference)
@@ -322,13 +313,15 @@ class Nanoparticle:
             self.adjustAtomicRatios(stoichiometry)
 
     def removeAtoms(self, latticeIndices):
-        for index in latticeIndices:
-            self.atoms.pop(index)
+        self.atoms.removeAtoms(latticeIndices)
+
+        self.findBoundingBox()
         self.constructNeighborList()
 
     def addAtoms(self, atoms):
-        for atom in atoms:
-            self.atoms[atom[0]] = atom[1]
+        self.atoms.addAtoms(atoms)
+
+        self.findBoundingBox()
         self.constructNeighborList()
 
     def fillHighCoordinatedSurfaceVacancies(self, count):
@@ -356,7 +349,7 @@ class Nanoparticle:
             # choose elements according to current distribution
             symbols = list()
             for atom in atomsToBeAdded:
-                symbols.append(np.random.choice(list(self.atoms.values())))
+                symbols.append(np.random.choice(self.atoms.getSymbols()))
 
             self.addAtoms(zip(atomsToBeAdded, symbols))
             atomsYetToBeAdded = atomsYetToBeAdded - len(atomsToBeAdded)
@@ -383,19 +376,14 @@ class Nanoparticle:
 
     def adjustAtomicRatios(self, stoichiometry):
         def randomlyTransfromFrom1to2(elementFrom, elementTo):
-            indices = np.random.permutation(list(self.atoms.keys()))
+            indicesSymbolFrom = self.atoms.getIndicesBySymbol(elementFrom)
+            index = np.random.choice(indicesSymbolFrom)
+            self.atoms.transformAtom(index, elementTo)
 
-            index = 0
-            randomLatticeIndex = indices[index]
-            while self.atoms[randomLatticeIndex] != elementFrom:
-                index = index + 1
-                randomLatticeIndex = indices[index]
-            self.atoms[randomLatticeIndex] = elementTo
-
-        # assuming bimetallic paricles
+        # assuming bimetallic particles
         ownStoichiometry = self.getStoichiometry()
-        element1 = list(ownStoichiometry.keys())[0]
-        element2 = list(ownStoichiometry.keys())[1]
+        element1 = self.atoms.getSymbols()[0]
+        element2 = self.atoms.getSymbols()[1]
 
         numberOfOperations = (ownStoichiometry[element1] - stoichiometry[element1])
 
@@ -411,7 +399,7 @@ class Nanoparticle:
         atomicNeighbors = 0
         nearestNeighbors = self.lattice.getNearestNeighbors(index)
         for latticeIndex in nearestNeighbors:
-            if latticeIndex in self.atoms:
+            if latticeIndex in self.atoms.getIndices():
                 atomicNeighbors = atomicNeighbors + 1
 
         return atomicNeighbors
