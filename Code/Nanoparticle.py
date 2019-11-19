@@ -2,7 +2,7 @@ import numpy as np
 
 from ase import Atoms
 from ase.optimize import BFGS
-from ase.calculators.emt import EMT
+from asap3 import EMT
 
 from Code import BoundingBox
 
@@ -265,9 +265,10 @@ class Nanoparticle:
 
     def getPotentialEnergyPerAtom(self):
         atoms = self.getASEAtoms()
+        atoms.set_cell(np.array([[self.boundingBox.width, 0, 0], [0, self.boundingBox.length, 0], [0, 0, self.boundingBox.height]]))
         atoms.set_calculator(EMT())
         dyn = BFGS(atoms)
-        dyn.run(fmax=0.05, steps=100)
+        dyn.run(fmax=0.05, steps=10)
 
         return atoms.get_potential_energy()/len(self.atoms)
 

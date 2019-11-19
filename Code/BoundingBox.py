@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class BoundingBox:
     def __init__(self, w, l, h, position):
         self.width = w
