@@ -228,7 +228,7 @@ class Nanoparticle:
 
     def getAtoms(self, atomIndices=None):
         if atomIndices is None:
-            return copy.copy(self.atoms)
+            return self.atoms.getDeepcopy()
         else:
             # TODO: not safe yet
             atoms = IndexedAtoms.IndexedAtoms()
@@ -236,13 +236,13 @@ class Nanoparticle:
 
             atoms.addAtoms(zip(atomIndices, symbols))
 
-            return copy.copy(atoms)
+            return copy.deepcopy(atoms)
 
     def getNeighborList(self):
         return self.neighborList.copy()
 
     def getBoundingBox(self):
-        return copy.copy(self.boundingBox)
+        return copy.deepcopy(self.boundingBox)
 
     def getASEAtoms(self, centered=True):
         atomPositions = list()
@@ -251,13 +251,10 @@ class Nanoparticle:
             atomPositions.append(self.lattice.getCartesianPositionFromIndex(latticeIndex))
             atomicSymbols.append(self.atoms.getSymbol(latticeIndex))
 
+        atoms = Atoms(positions=atomPositions, symbols=atomicSymbols)
         if centered:
-            centerOfMass = np.array([0, 0, 0])
-            for position in atomPositions:
-                centerOfMass = centerOfMass + position
-                centerOfMass = centerOfMass / len(atomPositions)
-
-            return Atoms(positions=(atomPositions - centerOfMass), symbols=atomicSymbols)
+            COM = Atoms.get_center_of_mass()
+            return Atoms(positions=[position - COM for position in atomPositions], symbols=atomicSymbols)
         else:
             return Atoms(positions=atomPositions, symbols=atomicSymbols)
 

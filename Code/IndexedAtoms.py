@@ -1,5 +1,5 @@
 import numpy as np
-
+import copy
 
 class IndexedAtoms:
     def __init__(self):
@@ -96,3 +96,10 @@ class IndexedAtoms:
         self.symbolByIndex[index] = newSymbol
         self.indicesBySymbol[oldSymbol].remove(index)
         self.indicesBySymbol[newSymbol].append(index)
+
+    def getDeepcopy(self):
+        copyAtoms = IndexedAtoms()
+        copyAtoms.indicesBySymbol = copy.deepcopy(self.indicesBySymbol)
+        copyAtoms.symbolByIndex = dict(self.symbolByIndex)
+
+        return copyAtoms

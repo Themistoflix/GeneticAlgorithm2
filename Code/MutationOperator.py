@@ -9,20 +9,20 @@ class MutationOperator:
         self.probabilityDistribution = self.probabilityDistribution/np.sum(self.probabilityDistribution)
 
     def mutateNanoparticle(self, particle):
-        commonLattice = particle.lattice
-        atoms = particle.getAtoms()
-
-        symbol1 = atoms.getSymbols()[0]
-        symbol2 = atoms.getSymbols()[1]
+        symbol1 = particle.atoms.getSymbols()[0]
+        symbol2 = particle.atoms.getSymbols()[1]
 
         numberOfExchanges = 1 + np.random.choice(self.maxExchanges, p=self.probabilityDistribution)
 
-        symbol1Indices = np.random.choice(atoms.getIndicesBySymbol(symbol1), numberOfExchanges, replace=False)
-        symbol2Indices = np.random.choice(atoms.getIndicesBySymbol(symbol2), numberOfExchanges, replace=False)
+        symbol1Indices = np.random.choice(particle.atoms.getIndicesBySymbol(symbol1), numberOfExchanges, replace=False)
+        symbol2Indices = np.random.choice(particle.atoms.getIndicesBySymbol(symbol2), numberOfExchanges, replace=False)
 
-        atoms.swapAtoms(zip(symbol1Indices, symbol2Indices))
+        particle.atoms.swapAtoms(zip(symbol1Indices, symbol2Indices))
 
-        newParticle = NP.Nanoparticle(commonLattice)
-        newParticle.fromParticleData(atoms, particle.getNeighborList(), particle.getBoundingBox())
+        return particle, zip(symbol1Indices, symbol2Indices)
 
-        return newParticle
+    def revertMutation(self, particle, swaps):
+        symbol1Indices, symbol2Indices = zip(*swaps)
+        particle.atoms.swapAtoms(zip(symbol2Indices, symbol1Indices))
+
+        return particle

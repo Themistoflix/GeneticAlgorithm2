@@ -13,6 +13,7 @@ if __name__ == '__main__':
 
     Pd_atoms = startParticle.getStoichiometry()['Pd']
     Au_atoms = startParticle.getStoichiometry()['Au']
+    totalAtoms = startParticle.atoms.getCount()
 
     kozlovSymbol = 'Au'
     energies = list()
@@ -21,7 +22,7 @@ if __name__ == '__main__':
     energies.append(oldEnergy)
 
     # maxAttemptsToEscapeMinimum = 10*Pd_atoms*(totalAtoms - Pd_atoms)
-    maxAttemptsToEscapeMinimum = 3
+    maxAttemptsToEscapeMinimum = 5
     attemptsWithoutExchange = 0
     mutationOperator = MO.MutationOperator(min(Pd_atoms, Au_atoms))
 
@@ -36,8 +37,13 @@ if __name__ == '__main__':
             print(totalAttempts)
 
         attemptsWithoutExchange = attemptsWithoutExchange + 1
-
+        #
+        print('start_particle_____________________')
+        startParticle.printKozlovParameters(kozlovSymbol)
+        print('new_particle')
         newParticle = mutationOperator.mutateNanoparticle(startParticle)
+        newParticle.printKozlovParameters(kozlovSymbol)
+        print('_____________________________________________')
         newEnergy = newParticle.getKozlovEnergy(descriptors, kozlovSymbol)
 
         deltaE = newEnergy - oldEnergy
@@ -45,10 +51,9 @@ if __name__ == '__main__':
             acceptanceRate = 1
         else:
             acceptanceRate = np.exp(-beta * deltaE)
-            print(oldEnergy, newEnergy, deltaE)
-            print(acceptanceRate)
 
         if np.random.random() > 1 - acceptanceRate:
+            print('accepted')
             attemptsWithoutExchange = 0
             energies.append(newEnergy)
             oldEnergy = newEnergy
